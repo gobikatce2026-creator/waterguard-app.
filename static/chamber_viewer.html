@@ -1,0 +1,1899 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>iot for visnu.glb — 3D PBR Viewer & Digital Twin Inspector</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Three.js r128 + OrbitControls + GLTFLoader -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      background-color: #0b0f17;
+      color: #f1f5f9;
+    }
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+    /* Glassmorphism panels */
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+    }
+    .glass-pill {
+      background: rgba(30, 41, 59, 0.75);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      transition: all 0.18s ease;
+    }
+    .glass-pill:hover {
+      background: rgba(51, 65, 85, 0.88);
+      border-color: rgba(56, 189, 248, 0.45);
+    }
+    .glass-pill.active {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.32), rgba(37, 99, 235, 0.32));
+      border-color: #38bdf8;
+      color: #e0f2fe;
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.25);
+    }
+    /* Custom Range Sliders */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      background: rgba(51, 65, 85, 0.9);
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: 2px solid #0f172a;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+      transition: transform 0.12s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.4);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.5);
+      border-radius: 999px;
+    }
+    /* Dropzone overlay */
+    #drop-overlay {
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    #drop-overlay.dragging {
+      opacity: 1;
+      pointer-events: all;
+    }
+    /* 3D Floating Callout Badges */
+    .annotation-pin {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      pointer-events: auto;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.2s ease;
+      z-index: 10;
+    }
+    .annotation-pin:hover {
+      transform: translate(-50%, -50%) scale(1.12);
+      z-index: 20;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden select-none">
+
+  <!-- 3D WebGL Viewport Container -->
+  <div id="canvas-container"></div>
+
+  <!-- 3D Floating Callout Pins Container -->
+  <div id="annotations-container" class="fixed inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+  <!-- Drag & Drop GLB Overlay -->
+  <div id="drop-overlay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6">
+    <div class="border-2 border-dashed border-sky-400 rounded-3xl p-12 max-w-lg w-full text-center bg-slate-900/70 shadow-2xl">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400">
+        <svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+      </div>
+      <h3 class="text-xl font-bold text-white mb-1">Drop <span class="text-sky-400 font-mono-tech">iot for visnu.glb</span> Here</h3>
+      <p class="text-sm text-slate-300">Loads your binary glTF 2.0 file directly into the Three.js PBR viewport with automatic bounding-box framing.</p>
+    </div>
+  </div>
+
+  <!-- Top Header Bar -->
+  <header class="fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+    <!-- Left: Model Title & Status Badge -->
+    <div class="glass-panel rounded-2xl px-4 py-2.5 flex items-center gap-3.5 pointer-events-auto">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-700 flex items-center justify-center shadow-lg shadow-sky-500/20">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm sm:text-base font-bold tracking-tight text-white font-mono-tech" id="model-title-label">iot for visnu.glb</h1>
+          <span id="source-badge" class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            13 PBR Materials Ready
+          </span>
+        </div>
+        <p class="text-xs text-slate-400 hidden sm:block">IoT Underground Water Pipe Sensor Chamber • SPL06 Pressure Telemetry & NB-IoT Solar Node</p>
+      </div>
+    </div>
+
+    <!-- Right: GLB File Upload & Reset Actions -->
+    <div class="glass-panel rounded-2xl p-1.5 flex items-center gap-1.5 pointer-events-auto">
+      <input type="file" id="glb-file-input" accept=".glb,.gltf" class="hidden" />
+      <button id="btn-upload-glb" class="glass-pill px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 text-sky-300 hover:text-white" title="Load local iot for visnu.glb file">
+        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+        </svg>
+        <span>Load Local <code class="font-mono-tech">.glb</code></span>
+      </button>
+
+      <button id="btn-restore-procedural" class="glass-pill px-3 py-2 rounded-xl text-xs font-medium hidden items-center gap-1.5 text-amber-300" title="Switch back to built-in procedural reconstruction">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <span>Procedural Scene</span>
+      </button>
+
+      <button id="btn-toggle-pins" class="glass-pill active px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5" title="Toggle 3D Callout Pins">
+        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <span class="hidden md:inline">Callouts</span>
+      </button>
+
+      <button id="btn-toggle-sidebar" class="glass-pill px-2.5 py-2 rounded-xl text-xs font-medium lg:hidden" title="Toggle Inspector Panel">
+        <svg class="w-4 h-4 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Left Panel: Subsystem Hierarchy, PBR Material Palette & Telemetry -->
+  <aside id="left-sidebar" class="fixed top-20 left-3 bottom-24 w-72 z-20 flex flex-col gap-3 pointer-events-none transition-transform duration-300 -translate-x-[120%] lg:translate-x-0">
+    <!-- Live Sensor Telemetry Card -->
+    <div class="glass-panel rounded-2xl p-3.5 pointer-events-auto">
+      <div class="flex items-center justify-between mb-2.5">
+        <span class="text-[11px] font-semibold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+          SPL06 Live Telemetry
+        </span>
+        <span class="text-[10px] font-mono-tech text-slate-400">NB-IoT Band 8</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2">
+          <div class="text-[10px] text-slate-400">Pipe Pressure</div>
+          <div id="telemetry-pressure" class="text-sm font-bold text-cyan-300 font-mono-tech mt-0.5">4.28 bar</div>
+        </div>
+        <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2">
+          <div class="text-[10px] text-slate-400">Water Temp</div>
+          <div id="telemetry-temp" class="text-sm font-bold text-emerald-300 font-mono-tech mt-0.5">18.4 °C</div>
+        </div>
+        <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2">
+          <div class="text-[10px] text-slate-400">Solar PV</div>
+          <div id="telemetry-solar" class="text-sm font-bold text-amber-300 font-mono-tech mt-0.5">5.14 V</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Selected Component & 13 PBR Materials Inspector -->
+    <div class="glass-panel rounded-2xl p-3.5 flex-1 flex flex-col min-h-0 pointer-events-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">Scene Nodes & 13 PBR Materials</h2>
+        <span id="mesh-count-badge" class="text-[10px] font-mono-tech text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md">7 Groups</span>
+      </div>
+
+      <!-- Active Selection Card -->
+      <div id="selection-card" class="bg-slate-900/85 border border-sky-500/30 rounded-xl p-3 mb-3">
+        <div class="flex items-center justify-between">
+          <span id="sel-title" class="text-xs font-bold text-white">SPL06 Brass Pressure Sensor</span>
+          <span id="sel-coords" class="text-[10px] font-mono-tech text-sky-400">(0.08, -0.67, 0.00)</span>
+        </div>
+        <div id="sel-mat" class="text-[11px] font-mono-tech text-amber-300 mt-1">PBR_Machined_Brass_SPL06</div>
+        <p id="sel-desc" class="text-[11px] text-slate-300 mt-1 leading-relaxed">
+          High-precision SPL06 pressure & temperature transducer mounted via gunmetal pipe saddle, 6-bolt flange, brass bulb/collar, and neoprene gland.
+        </p>
+      </div>
+
+      <!-- Interactive Subsystem List -->
+      <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5">Click Subsystem to Focus</div>
+      <div id="subsystem-list" class="flex-1 overflow-y-auto space-y-1.5 pr-1">
+        <!-- Populated dynamically by JS -->
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Panel: Lighting, Environment, Exploded View & Inspection Controls -->
+  <aside class="fixed top-20 right-3 z-20 w-72 flex flex-col gap-3 pointer-events-none hidden md:flex">
+    <div class="glass-panel rounded-2xl p-4 pointer-events-auto space-y-4">
+      <!-- Lighting & Environment Presets -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-200">Lighting & Environment</span>
+          <span id="env-label" class="text-[10px] font-mono-tech text-sky-400">Daylight Studio</span>
+        </div>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button data-env="daylight" class="env-btn glass-pill active py-2 px-2 rounded-xl text-[11px] font-medium flex flex-col items-center gap-1">
+            <svg class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+            <span>Daylight</span>
+          </button>
+          <button data-env="sunset" class="env-btn glass-pill py-2 px-2 rounded-xl text-[11px] font-medium flex flex-col items-center gap-1">
+            <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0l-1.414-1.414M7.05 7.05L5.636 5.636M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span>Warm Sunset</span>
+          </button>
+          <button data-env="night" class="env-btn glass-pill py-2 px-2 rounded-xl text-[11px] font-medium flex flex-col items-center gap-1">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+            </svg>
+            <span>Night Glow</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Exposure Slider -->
+      <div>
+        <div class="flex justify-between text-xs mb-1.5">
+          <span class="text-slate-300 font-medium">Tone Mapping Exposure</span>
+          <span id="exposure-val" class="font-mono-tech text-sky-400">1.15</span>
+        </div>
+        <input id="slider-exposure" type="range" min="0.4" max="2.2" step="0.05" value="1.15" class="w-full" />
+      </div>
+
+      <!-- Exploded View Slider -->
+      <div>
+        <div class="flex justify-between text-xs mb-1.5">
+          <span class="text-slate-300 font-medium">Exploded Assembly View</span>
+          <span id="explode-val" class="font-mono-tech text-sky-400">0%</span>
+        </div>
+        <input id="slider-explode" type="range" min="0" max="100" step="1" value="0" class="w-full" />
+      </div>
+
+      <!-- Inspection Toggles: X-Ray Concrete & Wireframe -->
+      <div class="pt-1 border-t border-slate-800 space-y-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-300 block">Diagnostic Render Modes</span>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btn-xray" class="glass-pill py-2 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            <span>X-Ray Chamber</span>
+          </button>
+
+          <button id="btn-wireframe" class="glass-pill py-2 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"/>
+            </svg>
+            <span>Wireframe</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btn-soil-toggle" class="glass-pill active py-2 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+            </svg>
+            <span>Soil & Grass</span>
+          </button>
+
+          <button id="btn-autorotate" class="glass-pill py-2 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <span>Auto-Orbit</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom Interactive Camera Presets Toolbar -->
+  <nav class="fixed bottom-3 left-1/2 -translate-x-1/2 z-20 max-w-[96vw] pointer-events-auto">
+    <div class="glass-panel rounded-2xl p-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+      <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-2 hidden sm:inline">Camera Presets:</span>
+
+      <button data-cam="isometric" class="cam-btn glass-pill active px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+        </svg>
+        <span>Isometric View</span>
+      </button>
+
+      <button data-cam="front" class="cam-btn glass-pill px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+        </svg>
+        <span>Front Cutaway</span>
+      </button>
+
+      <button data-cam="sensor" class="cam-btn glass-pill px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/>
+        </svg>
+        <span>SPL06 Sensor Close-Up</span>
+      </button>
+
+      <button data-cam="roof" class="cam-btn glass-pill px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707"/>
+        </svg>
+        <span>Top Roof View</span>
+      </button>
+
+      <button data-cam="enclosure" class="cam-btn glass-pill px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+        </svg>
+        <span class="hidden sm:inline">IP67 Enclosure</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Toast Notification Banner -->
+  <div id="toast-banner" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 glass-panel px-4 py-2.5 rounded-xl text-xs font-medium text-sky-200 border border-sky-400/40 opacity-0 pointer-events-none transition-opacity duration-300">
+    Notification
+  </div>
+
+  <script>
+    /***************************************************************************
+     * 1. PROCEDURAL CANVAS PBR TEXTURE GENERATOR (13 EXACT MATERIALS)
+     ***************************************************************************/
+    function createProceduralCanvas(width, height, drawFn) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      drawFn(ctx, width, height);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    function buildPBRMaterials() {
+      // 1. PBR_Precast_Concrete (Weathered gray precast concrete with aggregate & formwork seams)
+      const concreteAlbedo = createProceduralCanvas(512, 512, (ctx, w, h) => {
+        ctx.fillStyle = '#8b9298';
+        ctx.fillRect(0, 0, w, h);
+        // Subtle blotches and weathering
+        for (let i = 0; i < 4500; i++) {
+          const x = Math.random() * w;
+          const y = Math.random() * h;
+          const r = Math.random() * 3.5 + 0.5;
+          const shade = 115 + Math.floor(Math.random() * 55);
+          ctx.fillStyle = `rgba(${shade}, ${shade + 3}, ${shade + 6}, ${Math.random() * 0.28})`;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Fine dark & light aggregate speckles
+        for (let i = 0; i < 6000; i++) {
+          const x = Math.random() * w;
+          const y = Math.random() * h;
+          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(60,65,70,0.22)' : 'rgba(210,215,220,0.2)';
+          ctx.fillRect(x, y, 1.5, 1.5);
+        }
+        // Subtle horizontal formwork lines
+        ctx.strokeStyle = 'rgba(70, 76, 82, 0.25)';
+        ctx.lineWidth = 1.5;
+        for (let y = 64; y < h; y += 64) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+      });
+      concreteAlbedo.repeat.set(2, 2);
+
+      // 2. PBR_Underground_Soil (Rich earthy brown soil texture with organic strata)
+      const soilAlbedo = createProceduralCanvas(512, 512, (ctx, w, h) => {
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#4e3524');
+        grad.addColorStop(0.5, '#3d281a');
+        grad.addColorStop(1, '#2d1d12');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+
+        for (let i = 0; i < 8500; i++) {
+          const x = Math.random() * w;
+          const y = Math.random() * h;
+          const size = Math.random() * 4 + 1;
+          const colors = ['#5c402c', '#362214', '#694b35', '#26170d', '#7c5a3f'];
+          ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+          ctx.globalAlpha = 0.35 + Math.random() * 0.4;
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1.0;
+      });
+      soilAlbedo.repeat.set(3, 2);
+
+      // 3. PBR_Industrial_Water_Pipe (Dark metallic ductile iron with subtle weathering & clearcoat)
+      const pipeAlbedo = createProceduralCanvas(512, 512, (ctx, w, h) => {
+        ctx.fillStyle = '#252b33';
+        ctx.fillRect(0, 0, w, h);
+        // Cast iron stipple & circumferential machining grain
+        for (let i = 0; i < 7000; i++) {
+          const x = Math.random() * w;
+          const y = Math.random() * h;
+          const v = 30 + Math.floor(Math.random() * 30);
+          ctx.fillStyle = `rgb(${v}, ${v + 4}, ${v + 10})`;
+          ctx.fillRect(x, y, 2, 1);
+        }
+        // Subtle oxide/mineral weathering streaks
+        for (let i = 0; i < 180; i++) {
+          ctx.fillStyle = 'rgba(72, 58, 48, 0.12)';
+          ctx.fillRect(Math.random() * w, Math.random() * h, Math.random() * 25 + 5, Math.random() * 8 + 2);
+        }
+      });
+
+      // 4. PBR_Solar_Panel_Cells (Deep blue monocrystalline silicon grid & silver busbars)
+      const solarAlbedo = createProceduralCanvas(512, 512, (ctx, w, h) => {
+        ctx.fillStyle = '#0a1936';
+        ctx.fillRect(0, 0, w, h);
+
+        const cols = 6;
+        const rows = 4;
+        const cellW = w / cols;
+        const cellH = h / rows;
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const x = c * cellW;
+            const y = r * cellH;
+            const grad = ctx.createLinearGradient(x, y, x + cellW, y + cellH);
+            grad.addColorStop(0, '#0f2957');
+            grad.addColorStop(0.5, '#153875');
+            grad.addColorStop(1, '#0c2047');
+            ctx.fillStyle = grad;
+            ctx.fillRect(x + 3, y + 3, cellW - 6, cellH - 6);
+
+            // Fine horizontal silver collector fingers
+            ctx.strokeStyle = 'rgba(180, 210, 240, 0.28)';
+            ctx.lineWidth = 1;
+            for (let fy = y + 8; fy < y + cellH - 6; fy += 8) {
+              ctx.beginPath();
+              ctx.moveTo(x + 4, fy);
+              ctx.lineTo(x + cellW - 4, fy);
+              ctx.stroke();
+            }
+
+            // 2 vertical silver busbars per cell
+            ctx.fillStyle = 'rgba(215, 228, 242, 0.85)';
+            ctx.fillRect(x + cellW * 0.33, y + 3, 2.2, cellH - 6);
+            ctx.fillRect(x + cellW * 0.67, y + 3, 2.2, cellH - 6);
+          }
+        }
+
+        // White backsheet grid lines
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 3;
+        for (let c = 1; c < cols; c++) {
+          ctx.beginPath();
+          ctx.moveTo(c * cellW, 0);
+          ctx.lineTo(c * cellW, h);
+          ctx.stroke();
+        }
+        for (let r = 1; r < rows; r++) {
+          ctx.beginPath();
+          ctx.moveTo(0, r * cellH);
+          ctx.lineTo(w, r * cellH);
+          ctx.stroke();
+        }
+      });
+
+      // 5. PBR_Machined_Brass_SPL06 (Brushed golden metallic brass)
+      const brassAlbedo = createProceduralCanvas(256, 256, (ctx, w, h) => {
+        ctx.fillStyle = '#d4a646';
+        ctx.fillRect(0, 0, w, h);
+        for (let y = 0; y < h; y++) {
+          const delta = Math.sin(y * 0.35) * 10 + (Math.random() * 14 - 7);
+          ctx.fillStyle = `rgba(${212 + delta}, ${166 + delta * 0.8}, ${70 + delta * 0.4}, 0.35)`;
+          ctx.fillRect(0, y, w, 1);
+        }
+      });
+
+      // 6. PBR_Lush_Grass (Vibrant green organic blade variation)
+      const grassAlbedo = createProceduralCanvas(256, 256, (ctx, w, h) => {
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#4ade80');
+        grad.addColorStop(0.6, '#22c55e');
+        grad.addColorStop(1, '#14532d');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+      });
+
+      // 7. PBR_Soil_Pebbles (Multi-toned mineral river/soil stones)
+      const pebbleAlbedo = createProceduralCanvas(256, 256, (ctx, w, h) => {
+        ctx.fillStyle = '#78716c';
+        ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < 1200; i++) {
+          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(168,162,158,0.35)' : 'rgba(68,64,60,0.35)';
+          ctx.beginPath();
+          ctx.arc(Math.random() * w, Math.random() * h, Math.random() * 3 + 1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      return {
+        PBR_Precast_Concrete: new THREE.MeshStandardMaterial({
+          name: 'PBR_Precast_Concrete',
+          map: concreteAlbedo,
+          bumpMap: concreteAlbedo,
+          bumpScale: 0.008,
+          roughness: 0.86,
+          metalness: 0.04
+        }),
+        PBR_Underground_Soil: new THREE.MeshStandardMaterial({
+          name: 'PBR_Underground_Soil',
+          map: soilAlbedo,
+          bumpMap: soilAlbedo,
+          bumpScale: 0.015,
+          roughness: 0.96,
+          metalness: 0.02
+        }),
+        PBR_Soil_Pebbles: new THREE.MeshStandardMaterial({
+          name: 'PBR_Soil_Pebbles',
+          map: pebbleAlbedo,
+          roughness: 0.78,
+          metalness: 0.06
+        }),
+        PBR_Lush_Grass: new THREE.MeshStandardMaterial({
+          name: 'PBR_Lush_Grass',
+          map: grassAlbedo,
+          roughness: 0.65,
+          metalness: 0.02,
+          side: THREE.DoubleSide
+        }),
+        PBR_Industrial_Water_Pipe: new THREE.MeshPhysicalMaterial({
+          name: 'PBR_Industrial_Water_Pipe',
+          map: pipeAlbedo,
+          bumpMap: pipeAlbedo,
+          bumpScale: 0.006,
+          color: 0x2c3540,
+          metalness: 0.78,
+          roughness: 0.36,
+          clearcoat: 0.45,
+          clearcoatRoughness: 0.28
+        }),
+        PBR_Gunmetal_Steel: new THREE.MeshStandardMaterial({
+          name: 'PBR_Gunmetal_Steel',
+          color: 0x3b444f,
+          metalness: 0.85,
+          roughness: 0.32
+        }),
+        PBR_Anodized_Aluminum: new THREE.MeshStandardMaterial({
+          name: 'PBR_Anodized_Aluminum',
+          color: 0xd0d7de,
+          metalness: 0.88,
+          roughness: 0.24
+        }),
+        PBR_Machined_Brass_SPL06: new THREE.MeshStandardMaterial({
+          name: 'PBR_Machined_Brass_SPL06',
+          map: brassAlbedo,
+          color: 0xeab308,
+          metalness: 0.92,
+          roughness: 0.20
+        }),
+        PBR_Black_Neoprene_Cable: new THREE.MeshStandardMaterial({
+          name: 'PBR_Black_Neoprene_Cable',
+          color: 0x17191c,
+          metalness: 0.08,
+          roughness: 0.75
+        }),
+        PBR_WaterLine_Indicator: new THREE.MeshStandardMaterial({
+          name: 'PBR_WaterLine_Indicator',
+          color: 0x00e5ff,
+          emissive: 0x00b8d4,
+          emissiveIntensity: 1.4,
+          roughness: 0.15,
+          metalness: 0.1
+        }),
+        PBR_IP67_Polycarbonate: new THREE.MeshPhysicalMaterial({
+          name: 'PBR_IP67_Polycarbonate',
+          color: 0xcbd5e1,
+          metalness: 0.06,
+          roughness: 0.28,
+          clearcoat: 0.35,
+          clearcoatRoughness: 0.2
+        }),
+        PBR_Solar_Panel_Cells: new THREE.MeshPhysicalMaterial({
+          name: 'PBR_Solar_Panel_Cells',
+          map: solarAlbedo,
+          metalness: 0.35,
+          roughness: 0.14,
+          clearcoat: 0.9,
+          clearcoatRoughness: 0.08
+        }),
+        PBR_NBIoT_Fiberglass_Radome: new THREE.MeshPhysicalMaterial({
+          name: 'PBR_NBIoT_Fiberglass_Radome',
+          color: 0xf8fafc,
+          metalness: 0.04,
+          roughness: 0.18,
+          clearcoat: 0.8,
+          clearcoatRoughness: 0.12
+        })
+      };
+    }
+
+    /***************************************************************************
+     * 2. THREE.JS SCENE, CAMERA, RENDERER & ORBITCONTROLS INITIALIZATION
+     ***************************************************************************/
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0f17);
+    scene.fog = new THREE.FogExp2(0x0b0f17, 0.065);
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.02, 100);
+    camera.position.set(2.15, 1.15, 2.35);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.target.set(0.0, -0.42, -0.05);
+    controls.maxDistance = 12;
+    controls.minDistance = 0.25;
+
+    // Studio & Environmental Lights
+    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x3e2723, 0.85);
+    hemiLight.position.set(0, 6, 0);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.35);
+    dirLight.position.set(3.5, 5.2, 4.0);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 0.5;
+    dirLight.shadow.camera.far = 16;
+    const d = 2.6;
+    dirLight.shadow.camera.left = -d;
+    dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d;
+    dirLight.shadow.camera.bottom = -d;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.55);
+    rimLight.position.set(-3.2, 2.4, -2.8);
+    scene.add(rimLight);
+
+    // Subtle interior chamber illumination so SPL06 brass sensor & IP67 box shine clearly
+    const chamberPointLight = new THREE.PointLight(0x38bdf8, 0.65, 2.2);
+    chamberPointLight.position.set(0.08, -0.35, 0.12);
+    scene.add(chamberPointLight);
+
+    // Reference Floor Grid beneath model
+    const gridHelper = new THREE.GridHelper(6, 24, 0x1e293b, 0x0f172a);
+    gridHelper.position.y = -1.155;
+    scene.add(gridHelper);
+
+    /***************************************************************************
+     * 3. EXACT GEOMETRY RECONSTRUCTION OF "iot for visnu.glb"
+     ***************************************************************************/
+    const materials = buildPBRMaterials();
+    const proceduralRoot = new THREE.Group();
+    proceduralRoot.name = 'iot_for_visnu_root';
+    scene.add(proceduralRoot);
+
+    let customLoadedGLBGroup = null;
+    const interactiveMeshes = [];
+    const subsystemGroups = {};
+    const waterlineDashes = [];
+
+    // Subsystem Metadata for Inspector & Exploded View vectors
+    const SUBSYSTEM_SPECS = [
+      {
+        id: 'chamber',
+        name: '1. Precast Concrete Chamber',
+        matName: 'PBR_Precast_Concrete',
+        coords: 'X[-0.65, 0.65] Y[-1.15, 0.0] Z[-0.50, 0.50]',
+        explodeVec: new THREE.Vector3(0, 0.0, 0),
+        pinPos: new THREE.Vector3(-0.59, -0.18, 0.45),
+        shortLabel: 'Precast Chamber',
+        desc: 'Reinforced precast concrete underground utility vault with floor slab, side/back walls, roof deck rims, and 4 anodized anchor sockets at X=±0.57, Z=±0.42.'
+      },
+      {
+        id: 'soil',
+        name: '2. Soil Banks, Grass & Pebbles',
+        matName: 'PBR_Underground_Soil / PBR_Lush_Grass',
+        coords: 'X[-1.85, 1.85] Y[-1.15, 0.03] Z[-1.01, 0.51]',
+        explodeVec: new THREE.Vector3(0, -0.28, -0.35),
+        pinPos: new THREE.Vector3(-1.25, -0.02, 0.15),
+        shortLabel: 'Soil & Grass Strata',
+        desc: 'Excavated underground soil embankment surrounding the chamber with lush surface grass tufts (Y=-0.04 to 0.03) and scattered mineral pebbles on the cut face.'
+      },
+      {
+        id: 'pipe',
+        name: '3. Ductile Iron Water Pipe',
+        matName: 'PBR_Industrial_Water_Pipe',
+        coords: 'X[-1.90, 1.90] Y=-0.82 Z=0.0 (R=0.135m)',
+        explodeVec: new THREE.Vector3(0, -0.22, 0.35),
+        pinPos: new THREE.Vector3(-0.70, -0.82, 0.16),
+        shortLabel: 'DN270 Water Pipe',
+        desc: 'Main pressurized ductile iron water transmission pipeline (R=0.135m) with 3 ribbed mechanical couplings at X=-0.70, X=-0.27, and X=+0.73 (12 radial ribs each).'
+      },
+      {
+        id: 'sensor',
+        name: '4. SPL06 Brass Pressure Sensor',
+        matName: 'PBR_Machined_Brass_SPL06',
+        coords: 'X=0.08, Y[-0.82, -0.53], Z=0.0',
+        explodeVec: new THREE.Vector3(0, 0.16, 0.42),
+        pinPos: new THREE.Vector3(0.08, -0.63, 0.08),
+        shortLabel: 'SPL06 Brass Sensor',
+        desc: 'Gunmetal pipe saddle at (0.08,-0.70,0.0), 6-bolt mounting flange, machined brass SPL06 transducer bulb & collar, hex nut, neoprene gland, and cyan waterline dashes.'
+      },
+      {
+        id: 'enclosure',
+        name: '5. IP67 Polycarbonate Enclosure',
+        matName: 'PBR_IP67_Polycarbonate',
+        coords: 'X[-0.045, 0.205] Y[-0.437, -0.242] Z[-0.382, -0.267]',
+        explodeVec: new THREE.Vector3(0, 0.15, -0.28),
+        pinPos: new THREE.Vector3(0.08, -0.34, -0.26),
+        shortLabel: 'IP67 MCU Enclosure',
+        desc: 'Wall-mounted IP67 polycarbonate telemetry housing with black neoprene gasket seam, 4 corner screws, 3 bottom/top glands, and 3 routed neoprene coax/sensor cables.'
+      },
+      {
+        id: 'solar',
+        name: '6. Solar PV Panel & Struts',
+        matName: 'PBR_Solar_Panel_Cells',
+        coords: 'X[-0.40, 0.36] Y[0.0, 0.08] Z[-0.39, -0.03]',
+        explodeVec: new THREE.Vector3(-0.18, 0.48, -0.12),
+        pinPos: new THREE.Vector3(-0.02, 0.12, -0.21),
+        shortLabel: '35° Solar PV Array',
+        desc: 'Monocrystalline silicon solar PV panel with silver busbars and anodized aluminum frame tilted at ~35° on 2 gunmetal roof struts at X=-0.30 and X=+0.26.'
+      },
+      {
+        id: 'antenna',
+        name: '7. NB-IoT Fiberglass Antenna',
+        matName: 'PBR_NBIoT_Fiberglass_Radome',
+        coords: 'X=0.43, Y[0.01, 0.485], Z=-0.24',
+        explodeVec: new THREE.Vector3(0.28, 0.52, -0.10),
+        pinPos: new THREE.Vector3(0.43, 0.36, -0.24),
+        shortLabel: 'NB-IoT Radome',
+        desc: 'Omnidirectional long-range NB-IoT fiberglass radome antenna (Y=0.25 to 0.485m) on a gunmetal support mast (Y=0.02 to 0.25m) and 4-bolt base flange.'
+      }
+    ];
+
+    // Helper: tag mesh for raycasting & shadows
+    function registerMesh(mesh, subsystemId, partLabel) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.subsystemId = subsystemId;
+      mesh.userData.partLabel = partLabel;
+      interactiveMeshes.push(mesh);
+      return mesh;
+    }
+
+    // Helper: build exact BoxGeometry from min/max coordinates
+    function createBoundsBox(xMin, xMax, yMin, yMax, zMin, zMax, material, subsystemId, partLabel, parentGroup) {
+      const w = xMax - xMin;
+      const h = yMax - yMin;
+      const d = zMax - zMin;
+      const geom = new THREE.BoxGeometry(w, h, d);
+      const mesh = new THREE.Mesh(geom, material);
+      mesh.position.set((xMin + xMax) / 2, (yMin + yMax) / 2, (zMin + zMax) / 2);
+      registerMesh(mesh, subsystemId, partLabel);
+      parentGroup.add(mesh);
+      return mesh;
+    }
+
+    function buildProceduralScene() {
+      // Create subsystem groups
+      SUBSYSTEM_SPECS.forEach(spec => {
+        const grp = new THREE.Group();
+        grp.name = spec.id;
+        grp.userData.basePosition = new THREE.Vector3(0, 0, 0);
+        grp.userData.explodeVec = spec.explodeVec.clone();
+        subsystemGroups[spec.id] = grp;
+        proceduralRoot.add(grp);
+      });
+
+      /* ======================================================================
+       * 1. PRECAST CONCRETE CHAMBER
+       * ====================================================================== */
+      const gChamber = subsystemGroups['chamber'];
+      // Floor Slab: X=[-0.65, 0.65], Y=[-1.15, -1.04], Z=[-0.50, 0.50]
+      createBoundsBox(-0.65, 0.65, -1.15, -1.04, -0.50, 0.50, materials.PBR_Precast_Concrete, 'chamber', 'Floor Slab', gChamber);
+      // Back Wall: X=[-0.65, 0.65], Y=[-1.04, -0.11], Z=[-0.50, -0.39]
+      createBoundsBox(-0.65, 0.65, -1.04, -0.11, -0.50, -0.39, materials.PBR_Precast_Concrete, 'chamber', 'Back Wall', gChamber);
+      // Left Wall: X=[-0.65, -0.54], Y=[-1.04, -0.11], Z=[-0.50, 0.50]
+      createBoundsBox(-0.65, -0.54, -1.04, -0.11, -0.50, 0.50, materials.PBR_Precast_Concrete, 'chamber', 'Left Wall', gChamber);
+      // Right Wall: X=[0.54, 0.65], Y=[-1.04, -0.11], Z=[-0.50, 0.50]
+      createBoundsBox(0.54, 0.65, -1.04, -0.11, -0.50, 0.50, materials.PBR_Precast_Concrete, 'chamber', 'Right Wall', gChamber);
+      // Roof BackDeck: X=[-0.65, 0.65], Y=[-0.11, 0.0], Z=[-0.50, 0.08]
+      createBoundsBox(-0.65, 0.65, -0.11, 0.0, -0.50, 0.08, materials.PBR_Precast_Concrete, 'chamber', 'Roof BackDeck', gChamber);
+      // Roof FrontRim: X=[-0.65, 0.65], Y=[-0.11, 0.0], Z=[0.39, 0.50]
+      createBoundsBox(-0.65, 0.65, -0.11, 0.0, 0.39, 0.50, materials.PBR_Precast_Concrete, 'chamber', 'Roof FrontRim', gChamber);
+      // Roof LeftRim: X=[-0.65, -0.54], Y=[-0.11, 0.0], Z=[0.01, 0.39]
+      createBoundsBox(-0.65, -0.54, -0.11, 0.0, 0.01, 0.39, materials.PBR_Precast_Concrete, 'chamber', 'Roof LeftRim', gChamber);
+      // Roof RightRim: X=[0.54, 0.65], Y=[-0.11, 0.0], Z=[0.01, 0.39]
+      createBoundsBox(0.54, 0.65, -0.11, 0.0, 0.01, 0.39, materials.PBR_Precast_Concrete, 'chamber', 'Roof RightRim', gChamber);
+
+      // 4 Roof Anchor Sockets & Anodized Aluminum Bolts at X=±0.57, Y=0.0, Z=±0.42
+      const anchorCoords = [
+        [-0.57, 0.0, -0.42],
+        [0.57, 0.0, -0.42],
+        [-0.57, 0.0, 0.42],
+        [0.57, 0.0, 0.42]
+      ];
+      anchorCoords.forEach(([ax, ay, az], idx) => {
+        const socket = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.026, 0.026, 0.012, 16),
+          materials.PBR_Gunmetal_Steel
+        );
+        socket.position.set(ax, ay + 0.004, az);
+        registerMesh(socket, 'chamber', `Roof Anchor Socket #${idx + 1}`);
+        gChamber.add(socket);
+
+        const bolt = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.014, 0.014, 0.024, 6),
+          materials.PBR_Anodized_Aluminum
+        );
+        bolt.position.set(ax, ay + 0.014, az);
+        registerMesh(bolt, 'chamber', `Anodized Anchor Bolt #${idx + 1}`);
+        gChamber.add(bolt);
+      });
+
+      /* ======================================================================
+       * 2. UNDERGROUND SOIL BANKS, GRASS TUFTS & PEBBLES
+       * ====================================================================== */
+      const gSoil = subsystemGroups['soil'];
+      // Soil Back Bank: X=[-1.85, 1.85], Y=[-1.15, -0.04], Z=[-1.01, -0.49]
+      createBoundsBox(-1.85, 1.85, -1.15, -0.04, -1.01, -0.49, materials.PBR_Underground_Soil, 'soil', 'Soil Back Bank', gSoil);
+      // Soil Left Bank: X=[-1.85, -0.65], Y=[-1.15, -0.04], Z=[-0.51, 0.51]
+      createBoundsBox(-1.85, -0.65, -1.15, -0.04, -0.51, 0.51, materials.PBR_Underground_Soil, 'soil', 'Soil Left Bank', gSoil);
+      // Soil Right Bank: X=[0.65, 1.85], Y=[-1.15, -0.04], Z=[-0.51, 0.51]
+      createBoundsBox(0.65, 1.85, -1.15, -0.04, -0.51, 0.51, materials.PBR_Underground_Soil, 'soil', 'Soil Right Bank', gSoil);
+
+      // Lush Green Grass Tufts scattered across top soil banks & behind chamber (Y=-0.04 to 0.03)
+      const bladeGeom = new THREE.ConeGeometry(0.018, 0.075, 4);
+      bladeGeom.translate(0, 0.035, 0);
+
+      // Deterministic pseudo-random generator for consistent layout
+      let seed = 42;
+      const rand = () => {
+        seed = (seed * 1664525 + 1013904223) % 4294967296;
+        return seed / 4294967296;
+      };
+
+      for (let i = 0; i < 165; i++) {
+        let gx, gz;
+        const zone = rand();
+        if (zone < 0.42) {
+          // Back bank
+          gx = -1.78 + rand() * 3.56;
+          gz = -0.96 + rand() * 0.43;
+        } else if (zone < 0.71) {
+          // Left bank
+          gx = -1.78 + rand() * 1.08;
+          gz = -0.48 + rand() * 0.94;
+        } else {
+          // Right bank
+          gx = 0.70 + rand() * 1.08;
+          gz = -0.48 + rand() * 0.94;
+        }
+
+        const tuftGroup = new THREE.Group();
+        tuftGroup.position.set(gx, -0.04, gz);
+        const bladesInTuft = 3 + Math.floor(rand() * 3);
+        for (let b = 0; b < bladesInTuft; b++) {
+          const blade = new THREE.Mesh(bladeGeom, materials.PBR_Lush_Grass);
+          blade.scale.set(0.8 + rand() * 0.6, 0.75 + rand() * 0.55, 0.8 + rand() * 0.6);
+          blade.rotation.set((rand() - 0.5) * 0.45, rand() * Math.PI * 2, (rand() - 0.5) * 0.45);
+          registerMesh(blade, 'soil', 'Lush Grass Tuft');
+          tuftGroup.add(blade);
+        }
+        gSoil.add(tuftGroup);
+      }
+
+      // Scattered Soil Pebbles along the front cut faces & top surface of the soil banks
+      const pebbleGeom = new THREE.DodecahedronGeometry(0.022, 1);
+      for (let i = 0; i < 95; i++) {
+        const isLeft = rand() > 0.5;
+        const px = isLeft ? (-1.80 + rand() * 1.10) : (0.70 + rand() * 1.10);
+        const onTop = rand() > 0.68;
+        const py = onTop ? -0.038 : (-1.10 + rand() * 1.02);
+        const pz = onTop ? (-0.45 + rand() * 0.90) : (0.505 + (rand() - 0.5) * 0.015);
+
+        const pebble = new THREE.Mesh(pebbleGeom, materials.PBR_Soil_Pebbles);
+        pebble.position.set(px, py, pz);
+        pebble.scale.set(0.6 + rand() * 1.1, 0.45 + rand() * 0.7, 0.5 + rand() * 0.9);
+        pebble.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
+        registerMesh(pebble, 'soil', 'Soil Cut-Face Pebble');
+        gSoil.add(pebble);
+      }
+
+      /* ======================================================================
+       * 3. MAIN INDUSTRIAL WATER PIPE & RIBBED COUPLINGS
+       * ====================================================================== */
+      const gPipe = subsystemGroups['pipe'];
+      // Main Water Pipe: horizontal cylinder along X from -1.90 to +1.90 (length 3.80m), Y=-0.82, Z=0.0, R=0.135m
+      const mainPipeGeom = new THREE.CylinderGeometry(0.135, 0.135, 3.80, 40, 1, false);
+      mainPipeGeom.rotateZ(Math.PI / 2);
+      const mainPipeMesh = new THREE.Mesh(mainPipeGeom, materials.PBR_Industrial_Water_Pipe);
+      mainPipeMesh.position.set(0.0, -0.82, 0.0);
+      registerMesh(mainPipeMesh, 'pipe', 'Main Ductile Iron Water Pipe (R=0.135m)');
+      gPipe.add(mainPipeMesh);
+
+      // Dark inner pipe bore caps at X = ±1.902
+      const boreGeom = new THREE.CircleGeometry(0.122, 32);
+      const boreMat = new THREE.MeshBasicMaterial({ color: 0x05080f });
+      const leftBore = new THREE.Mesh(boreGeom, boreMat);
+      leftBore.rotation.y = -Math.PI / 2;
+      leftBore.position.set(-1.901, -0.82, 0.0);
+      gPipe.add(leftBore);
+      const rightBore = new THREE.Mesh(boreGeom, boreMat);
+      rightBore.rotation.y = Math.PI / 2;
+      rightBore.position.set(1.901, -0.82, 0.0);
+      gPipe.add(rightBore);
+
+      // Ribbed Pipe Couplings: Inner Left (X=-0.27), Outer Left (X=-0.70), Outer Right (X=+0.73)
+      const couplingPositions = [
+        { x: -0.27, label: 'Inner Left Ribbed Coupling (X=-0.27)' },
+        { x: -0.70, label: 'Outer Left Ribbed Coupling (X=-0.70)' },
+        { x: 0.73, label: 'Outer Right Ribbed Coupling (X=+0.73)' }
+      ];
+
+      couplingPositions.forEach(cp => {
+        const cGroup = new THREE.Group();
+        cGroup.position.set(cp.x, -0.82, 0.0);
+
+        // Main outer sleeve
+        const sleeveGeom = new THREE.CylinderGeometry(0.152, 0.152, 0.18, 36);
+        sleeveGeom.rotateZ(Math.PI / 2);
+        const sleeve = new THREE.Mesh(sleeveGeom, materials.PBR_Industrial_Water_Pipe);
+        registerMesh(sleeve, 'pipe', cp.label);
+        cGroup.add(sleeve);
+
+        // Left & Right Lock Rings
+        [-0.085, 0.085].forEach(offsetX => {
+          const ringGeom = new THREE.CylinderGeometry(0.160, 0.160, 0.022, 36);
+          ringGeom.rotateZ(Math.PI / 2);
+          const ring = new THREE.Mesh(ringGeom, materials.PBR_Gunmetal_Steel);
+          ring.position.x = offsetX;
+          registerMesh(ring, 'pipe', `${cp.label} Lock Ring`);
+          cGroup.add(ring);
+        });
+
+        // 12 Radial Ribs around circumference
+        const ribGeom = new THREE.BoxGeometry(0.175, 0.014, 0.012);
+        for (let r = 0; r < 12; r++) {
+          const angle = (r / 12) * Math.PI * 2;
+          const rib = new THREE.Mesh(ribGeom, materials.PBR_Industrial_Water_Pipe);
+          const radius = 0.156;
+          rib.position.set(0, Math.cos(angle) * radius, Math.sin(angle) * radius);
+          rib.rotation.x = angle;
+          registerMesh(rib, 'pipe', `${cp.label} Radial Rib #${r + 1}`);
+          cGroup.add(rib);
+        }
+
+        gPipe.add(cGroup);
+      });
+
+      /* ======================================================================
+       * 4. SPL06 BRASS PRESSURE SENSOR ASSEMBLY (at X=0.08, Y=-0.82 to -0.60, Z=0.0)
+       * ====================================================================== */
+      const gSensor = subsystemGroups['sensor'];
+
+      // Gunmetal Steel Pipe Saddle at (0.08, -0.70, 0.0)
+      const saddleClampGeom = new THREE.CylinderGeometry(0.146, 0.146, 0.13, 32, 1, false, 0, Math.PI * 2);
+      saddleClampGeom.rotateZ(Math.PI / 2);
+      const saddleClamp = new THREE.Mesh(saddleClampGeom, materials.PBR_Gunmetal_Steel);
+      saddleClamp.position.set(0.08, -0.82, 0.0);
+      registerMesh(saddleClamp, 'sensor', 'Gunmetal Pipe Saddle Clamp');
+      gSensor.add(saddleClamp);
+
+      const saddleRiserGeom = new THREE.CylinderGeometry(0.048, 0.056, 0.125, 24);
+      const saddleRiser = new THREE.Mesh(saddleRiserGeom, materials.PBR_Gunmetal_Steel);
+      saddleRiser.position.set(0.08, -0.70, 0.0);
+      registerMesh(saddleRiser, 'sensor', 'Gunmetal Saddle Boss (0.08, -0.70, 0.0)');
+      gSensor.add(saddleRiser);
+
+      // Mounting Flange at (0.08, -0.633, 0.0) with 6 flange bolts
+      const flangeGeom = new THREE.CylinderGeometry(0.062, 0.062, 0.014, 28);
+      const flange = new THREE.Mesh(flangeGeom, materials.PBR_Gunmetal_Steel);
+      flange.position.set(0.08, -0.633, 0.0);
+      registerMesh(flange, 'sensor', 'SPL06 Mounting Flange (0.08, -0.633, 0.0)');
+      gSensor.add(flange);
+
+      for (let b = 0; b < 6; b++) {
+        const ang = (b / 6) * Math.PI * 2;
+        const fBolt = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.0055, 0.0055, 0.018, 6),
+          materials.PBR_Anodized_Aluminum
+        );
+        fBolt.position.set(0.08 + Math.cos(ang) * 0.046, -0.630, Math.sin(ang) * 0.046);
+        registerMesh(fBolt, 'sensor', `Flange Hex Bolt #${b + 1}`);
+        gSensor.add(fBolt);
+      }
+
+      // Machined Brass Bulb & Brass Collar (PBR_Machined_Brass_SPL06) at (0.08, -0.67, 0.0) and (0.08, -0.653, 0.0)
+      const brassBulb = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.032, 0.036, 0.045, 28),
+        materials.PBR_Machined_Brass_SPL06
+      );
+      brassBulb.position.set(0.08, -0.67, 0.0);
+      registerMesh(brassBulb, 'sensor', 'SPL06 Machined Brass Bulb (0.08, -0.67, 0.0)');
+      gSensor.add(brassBulb);
+
+      const brassCollar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.028, 0.031, 0.032, 28),
+        materials.PBR_Machined_Brass_SPL06
+      );
+      brassCollar.position.set(0.08, -0.618, 0.0);
+      registerMesh(brassCollar, 'sensor', 'SPL06 Machined Brass Collar (0.08, -0.653, 0.0)');
+      gSensor.add(brassCollar);
+
+      // Hex Nut & Neoprene Cable Gland at (0.08, -0.60, 0.0)
+      const hexNut = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.024, 0.024, 0.016, 6),
+        materials.PBR_Machined_Brass_SPL06
+      );
+      hexNut.position.set(0.08, -0.598, 0.0);
+      registerMesh(hexNut, 'sensor', 'SPL06 Brass Hex Nut');
+      gSensor.add(hexNut);
+
+      const sensorGland = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014, 0.018, 0.024, 16),
+        materials.PBR_Black_Neoprene_Cable
+      );
+      sensorGland.position.set(0.08, -0.580, 0.0);
+      registerMesh(sensorGland, 'sensor', 'Neoprene Sensor Cable Gland (0.08, -0.60, 0.0)');
+      gSensor.add(sensorGland);
+
+      // Emissive Blue WaterLine Indicator Dashes (PBR_WaterLine_Indicator) along Z from -0.35 to +0.43 at X=0.08, Y=-0.53
+      const dashCount = 10;
+      const zStart = -0.35;
+      const zEnd = 0.43;
+      for (let i = 0; i < dashCount; i++) {
+        const zPos = zStart + (i / (dashCount - 1)) * (zEnd - zStart);
+        const dash = new THREE.Mesh(
+          new THREE.BoxGeometry(0.018, 0.009, 0.048),
+          materials.PBR_WaterLine_Indicator.clone()
+        );
+        dash.position.set(0.08, -0.53, zPos);
+        dash.userData.dashIndex = i;
+        waterlineDashes.push(dash);
+        registerMesh(dash, 'sensor', `Emissive WaterLine Dash #${i + 1} (Y=-0.53)`);
+        gSensor.add(dash);
+      }
+
+      /* ======================================================================
+       * 5. IP67 POLYCARBONATE ENCLOSURE ON BACK WALL & 3 NEOPRENE CABLES
+       * ====================================================================== */
+      const gEnclosure = subsystemGroups['enclosure'];
+      // Enclosure Box: X=[-0.045, 0.205], Y=[-0.437, -0.242], Z=[-0.382, -0.267]
+      createBoundsBox(
+        -0.045, 0.205,
+        -0.437, -0.242,
+        -0.382, -0.285,
+        materials.PBR_IP67_Polycarbonate,
+        'enclosure',
+        'IP67 Polycarbonate Enclosure Base',
+        gEnclosure
+      );
+
+      // Black rubber gasket seam
+      createBoundsBox(
+        -0.047, 0.207,
+        -0.439, -0.240,
+        -0.286, -0.280,
+        materials.PBR_Black_Neoprene_Cable,
+        'enclosure',
+        'IP67 Black Rubber Gasket Seam',
+        gEnclosure
+      );
+
+      // Front Polycarbonate Lid
+      createBoundsBox(
+        -0.045, 0.205,
+        -0.437, -0.242,
+        -0.280, -0.267,
+        materials.PBR_IP67_Polycarbonate,
+        'enclosure',
+        'IP67 Polycarbonate Front Cover',
+        gEnclosure
+      );
+
+      // 4 Corner Screws on IP67 Lid
+      const screwOffsets = [
+        [-0.028, -0.258],
+        [0.188, -0.258],
+        [-0.028, -0.420],
+        [0.188, -0.420]
+      ];
+      screwOffsets.forEach(([sx, sy], idx) => {
+        const screw = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.008, 0.008, 0.008, 12),
+          materials.PBR_Anodized_Aluminum
+        );
+        screw.rotation.x = Math.PI / 2;
+        screw.position.set(sx, sy, -0.265);
+        registerMesh(screw, 'enclosure', `Enclosure Corner Screw #${idx + 1}`);
+        gEnclosure.add(screw);
+      });
+
+      // Glowing Telemetry Status Badge on front of IP67 Box
+      const ledBadge = new THREE.Mesh(
+        new THREE.BoxGeometry(0.055, 0.016, 0.004),
+        materials.PBR_WaterLine_Indicator
+      );
+      ledBadge.position.set(0.08, -0.31, -0.265);
+      registerMesh(ledBadge, 'enclosure', 'IP67 Active Telemetry LED Indicator');
+      gEnclosure.add(ledBadge);
+
+      // 3 Cable Glands on IP67 Enclosure (1 bottom for SPL06, 2 top for Solar & NB-IoT Antenna)
+      const glandSpecs = [
+        { pos: [0.08, -0.448, -0.325], label: 'Bottom Gland (SPL06 Sensor Feed)' },
+        { pos: [0.01, -0.230, -0.325], label: 'Top-Left Gland (Solar PV Power)' },
+        { pos: [0.15, -0.230, -0.325], label: 'Top-Right Gland (NB-IoT RF Coax)' }
+      ];
+      glandSpecs.forEach(gl => {
+        const glandMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.014, 0.028, 14),
+          materials.PBR_Black_Neoprene_Cable
+        );
+        glandMesh.position.set(...gl.pos);
+        registerMesh(glandMesh, 'enclosure', gl.label);
+        gEnclosure.add(glandMesh);
+      });
+
+      // 3 Black Neoprene Coax/Sensor Cables using CatmullRomCurve3 TubeGeometry
+      const cableRoutes = [
+        {
+          name: 'SPL06 Sensor Neoprene Cable',
+          points: [
+            new THREE.Vector3(0.08, -0.455, -0.325),
+            new THREE.Vector3(0.08, -0.54, -0.26),
+            new THREE.Vector3(0.08, -0.57, -0.10),
+            new THREE.Vector3(0.08, -0.575, 0.0)
+          ]
+        },
+        {
+          name: 'Solar PV Power Neoprene Cable',
+          points: [
+            new THREE.Vector3(0.01, -0.220, -0.325),
+            new THREE.Vector3(-0.04, -0.15, -0.34),
+            new THREE.Vector3(-0.08, -0.06, -0.28),
+            new THREE.Vector3(-0.08, 0.02, -0.24)
+          ]
+        },
+        {
+          name: 'NB-IoT Antenna RF Coax Cable',
+          points: [
+            new THREE.Vector3(0.15, -0.220, -0.325),
+            new THREE.Vector3(0.26, -0.16, -0.31),
+            new THREE.Vector3(0.39, -0.09, -0.26),
+            new THREE.Vector3(0.43, 0.01, -0.24)
+          ]
+        }
+      ];
+
+      cableRoutes.forEach(route => {
+        const curve = new THREE.CatmullRomCurve3(route.points);
+        const tubeGeom = new THREE.TubeGeometry(curve, 32, 0.0085, 12, false);
+        const tubeMesh = new THREE.Mesh(tubeGeom, materials.PBR_Black_Neoprene_Cable);
+        registerMesh(tubeMesh, 'enclosure', route.name);
+        gEnclosure.add(tubeMesh);
+      });
+
+      /* ======================================================================
+       * 6. SOLAR PANEL & MOUNT STRUTS ON ROOF DECK (tilted at ~35 deg)
+       * ====================================================================== */
+      const gSolar = subsystemGroups['solar'];
+      // 2 Gunmetal Mount Struts at X=-0.30 and X=+0.26, Y=0.02, Z=-0.31
+      [-0.30, 0.26].forEach((sx, idx) => {
+        // Rear taller pedestal + angled support arm
+        const strutBase = new THREE.Mesh(
+          new THREE.BoxGeometry(0.036, 0.02, 0.22),
+          materials.PBR_Gunmetal_Steel
+        );
+        strutBase.position.set(sx, 0.01, -0.24);
+        registerMesh(strutBase, 'solar', `Gunmetal Solar Mount Base #${idx + 1}`);
+        gSolar.add(strutBase);
+
+        const rearPillar = new THREE.Mesh(
+          new THREE.BoxGeometry(0.028, 0.14, 0.032),
+          materials.PBR_Gunmetal_Steel
+        );
+        rearPillar.position.set(sx, 0.07, -0.31);
+        registerMesh(rearPillar, 'solar', `Gunmetal Solar Mount Strut #${idx + 1} (X=${sx})`);
+        gSolar.add(rearPillar);
+
+        const frontPillar = new THREE.Mesh(
+          new THREE.BoxGeometry(0.028, 0.035, 0.028),
+          materials.PBR_Gunmetal_Steel
+        );
+        frontPillar.position.set(sx, 0.018, -0.08);
+        registerMesh(frontPillar, 'solar', `Gunmetal Solar Front Foot #${idx + 1}`);
+        gSolar.add(frontPillar);
+      });
+
+      // Solar Panel Assembly spanning X=[-0.40, 0.36] (width 0.76m), Z=[-0.39, -0.03] (depth 0.36m), tilted ~35 deg
+      const solarTiltGroup = new THREE.Group();
+      solarTiltGroup.position.set(-0.02, 0.085, -0.21);
+      solarTiltGroup.rotation.x = THREE.MathUtils.degToRad(32);
+
+      // Anodized Aluminum Frame
+      const frameMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.76, 0.024, 0.36),
+        materials.PBR_Anodized_Aluminum
+      );
+      registerMesh(frameMesh, 'solar', 'Anodized Aluminum Solar Frame');
+      solarTiltGroup.add(frameMesh);
+
+      // Solar PV Cells Surface (PBR_Solar_Panel_Cells)
+      const pvCellsMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.725, 0.006, 0.325),
+        materials.PBR_Solar_Panel_Cells
+      );
+      pvCellsMesh.position.y = 0.011;
+      registerMesh(pvCellsMesh, 'solar', 'Monocrystalline Solar PV Cells Grid');
+      solarTiltGroup.add(pvCellsMesh);
+
+      gSolar.add(solarTiltGroup);
+
+      /* ======================================================================
+       * 7. NB-IoT FIBERGLASS RADOME ANTENNA (at X=0.43, Z=-0.24)
+       * ====================================================================== */
+      const gAntenna = subsystemGroups['antenna'];
+      const antX = 0.43;
+      const antZ = -0.24;
+
+      // Base Flange & Collar at Y=0.01 to 0.02
+      const antFlange = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.058, 0.012, 24),
+        materials.PBR_Gunmetal_Steel
+      );
+      antFlange.position.set(antX, 0.006, antZ);
+      registerMesh(antFlange, 'antenna', 'NB-IoT Antenna Base Flange');
+      gAntenna.add(antFlange);
+
+      const antCollar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.028, 0.034, 0.018, 20),
+        materials.PBR_Gunmetal_Steel
+      );
+      antCollar.position.set(antX, 0.018, antZ);
+      registerMesh(antCollar, 'antenna', 'NB-IoT Antenna Base Collar');
+      gAntenna.add(antCollar);
+
+      // 4 Base Bolts
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        const bBolt = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.006, 0.006, 0.016, 6),
+          materials.PBR_Anodized_Aluminum
+        );
+        bBolt.position.set(antX + Math.cos(a) * 0.040, 0.012, antZ + Math.sin(a) * 0.040);
+        registerMesh(bBolt, 'antenna', `Antenna Base Bolt #${i + 1}`);
+        gAntenna.add(bBolt);
+      }
+
+      // Gunmetal Support Mast (Y=0.02 to 0.25)
+      const mastHeight = 0.23;
+      const antMast = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.017, 0.019, mastHeight, 24),
+        materials.PBR_Gunmetal_Steel
+      );
+      antMast.position.set(antX, 0.02 + mastHeight / 2, antZ);
+      registerMesh(antMast, 'antenna', 'Gunmetal Antenna Support Mast (Y=0.02..0.25)');
+      gAntenna.add(antMast);
+
+      // Metal Coupling Ferrule at Y=0.25
+      const ferrule = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.022, 0.020, 0.022, 24),
+        materials.PBR_Anodized_Aluminum
+      );
+      ferrule.position.set(antX, 0.25, antZ);
+      registerMesh(ferrule, 'antenna', 'Antenna Radome Ferrule');
+      gAntenna.add(ferrule);
+
+      // White Fiberglass Radome Cylinder & Spherical Cap (Y=0.25 to 0.485)
+      const radomeCylHeight = 0.215;
+      const radomeCyl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.020, 0.020, radomeCylHeight, 28),
+        materials.PBR_NBIoT_Fiberglass_Radome
+      );
+      radomeCyl.position.set(antX, 0.25 + radomeCylHeight / 2, antZ);
+      registerMesh(radomeCyl, 'antenna', 'NB-IoT White Fiberglass Radome (Y=0.25..0.485)');
+      gAntenna.add(radomeCyl);
+
+      const radomeCap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.020, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+        materials.PBR_NBIoT_Fiberglass_Radome
+      );
+      radomeCap.position.set(antX, 0.25 + radomeCylHeight, antZ);
+      registerMesh(radomeCap, 'antenna', 'NB-IoT Fiberglass Radome Cap');
+      gAntenna.add(radomeCap);
+    }
+
+    buildProceduralScene();
+
+    /***************************************************************************
+     * 4. UI SIDEBAR, 3D CALLOUT PINS & INTERACTIVE RAYCASTING
+     ***************************************************************************/
+    const subsystemListEl = document.getElementById('subsystem-list');
+    const annotationsContainer = document.getElementById('annotations-container');
+    const annotationElements = [];
+    let selectedSubsystemId = 'sensor';
+    let showCalloutPins = true;
+
+    function selectSubsystem(subId, focusCamera = false) {
+      selectedSubsystemId = subId;
+      const spec = SUBSYSTEM_SPECS.find(s => s.id === subId);
+      if (!spec) return;
+
+      document.getElementById('sel-title').textContent = spec.name.replace(/^\d+\.\s*/, '');
+      document.getElementById('sel-coords').textContent = spec.coords;
+      document.getElementById('sel-mat').textContent = spec.matName;
+      document.getElementById('sel-desc').textContent = spec.desc;
+
+      // Update list highlight
+      document.querySelectorAll('.sub-item-btn').forEach(btn => {
+        const active = btn.getAttribute('data-sub') === subId;
+        btn.classList.toggle('border-sky-400', active);
+        btn.classList.toggle('bg-sky-500/15', active);
+      });
+
+      // Brief emissive flash on selected group
+      const grp = subsystemGroups[subId];
+      if (grp) {
+        grp.traverse(obj => {
+          if (obj.isMesh && obj.material && obj.material.emissive && obj.material.name !== 'PBR_WaterLine_Indicator') {
+            const origHex = obj.material.emissive.getHex();
+            obj.material.emissive.setHex(0x0284c7);
+            setTimeout(() => {
+              obj.material.emissive.setHex(origHex);
+            }, 320);
+          }
+        });
+      }
+
+      if (focusCamera) {
+        if (subId === 'sensor') animateCameraToPreset('sensor');
+        else if (subId === 'enclosure') animateCameraToPreset('enclosure');
+        else if (subId === 'solar' || subId === 'antenna') animateCameraToPreset('roof');
+        else if (subId === 'pipe' || subId === 'chamber') animateCameraToPreset('front');
+        else animateCameraToPreset('isometric');
+      }
+    }
+
+    // Populate Left Sidebar & Floating 3D Callout Pins
+    SUBSYSTEM_SPECS.forEach((spec, idx) => {
+      const btn = document.createElement('button');
+      btn.setAttribute('data-sub', spec.id);
+      btn.className = `sub-item-btn w-full text-left p-2 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-800/80 transition flex items-center justify-between gap-2 ${spec.id === selectedSubsystemId ? 'border-sky-400 bg-sky-500/15' : ''}`;
+      btn.innerHTML = `
+        <div class="min-w-0">
+          <div class="text-xs font-semibold text-slate-100 truncate">${spec.name}</div>
+          <div class="text-[10px] font-mono-tech text-slate-400 truncate">${spec.matName}</div>
+        </div>
+        <span class="w-2 h-2 rounded-full bg-sky-400 shrink-0"></span>
+      `;
+      btn.addEventListener('click', () => selectSubsystem(spec.id, true));
+      subsystemListEl.appendChild(btn);
+
+      // Create Floating 3D Pin
+      const pin = document.createElement('div');
+      pin.className = 'annotation-pin glass-pill px-2.5 py-1 rounded-full text-[11px] font-medium text-sky-100 flex items-center gap-1.5 shadow-lg';
+      pin.innerHTML = `
+        <span class="w-4 h-4 rounded-full bg-sky-500 text-slate-950 font-bold text-[10px] flex items-center justify-center">${idx + 1}</span>
+        <span class="whitespace-nowrap">${spec.shortLabel}</span>
+      `;
+      pin.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectSubsystem(spec.id, true);
+      });
+      annotationsContainer.appendChild(pin);
+      annotationElements.push({ el: pin, spec });
+    });
+
+    // Raycasting on Canvas Click
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let pointerDownPos = { x: 0, y: 0 };
+
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      pointerDownPos = { x: e.clientX, y: e.clientY };
+    });
+
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      const dist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+      if (dist > 6) return; // Dragged orbit controls, ignore click
+
+      pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+
+      const hits = raycaster.intersectObjects(interactiveMeshes, true);
+      if (hits.length > 0) {
+        const hitObj = hits[0].object;
+        if (hitObj.userData.subsystemId) {
+          selectSubsystem(hitObj.userData.subsystemId, false);
+          if (hitObj.userData.partLabel) {
+            showToast(`Selected: ${hitObj.userData.partLabel}`);
+          }
+        }
+      }
+    });
+
+    /***************************************************************************
+     * 5. CAMERA PRESETS & SMOOTH TWEEN ANIMATION
+     ***************************************************************************/
+    const CAMERA_PRESETS = {
+      isometric: {
+        pos: new THREE.Vector3(2.15, 1.15, 2.35),
+        target: new THREE.Vector3(0.0, -0.42, -0.05)
+      },
+      front: {
+        pos: new THREE.Vector3(0.0, -0.46, 2.35),
+        target: new THREE.Vector3(0.0, -0.56, -0.10)
+      },
+      sensor: {
+        pos: new THREE.Vector3(0.32, -0.48, 0.56),
+        target: new THREE.Vector3(0.08, -0.66, 0.0)
+      },
+      roof: {
+        pos: new THREE.Vector3(0.05, 1.75, 0.72),
+        target: new THREE.Vector3(0.05, 0.08, -0.22)
+      },
+      enclosure: {
+        pos: new THREE.Vector3(0.12, -0.25, 0.48),
+        target: new THREE.Vector3(0.08, -0.34, -0.32)
+      }
+    };
+
+    let camAnim = null;
+
+    function animateCameraToPreset(presetKey) {
+      const preset = CAMERA_PRESETS[presetKey];
+      if (!preset) return;
+
+      document.querySelectorAll('.cam-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-cam') === presetKey);
+      });
+
+      camAnim = {
+        startTime: performance.now(),
+        duration: 750,
+        startPos: camera.position.clone(),
+        endPos: preset.pos.clone(),
+        startTarget: controls.target.clone(),
+        endTarget: preset.target.clone()
+      };
+    }
+
+    document.querySelectorAll('.cam-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        animateCameraToPreset(btn.getAttribute('data-cam'));
+      });
+    });
+
+    /***************************************************************************
+     * 6. LIGHTING, ENVIRONMENT, EXPLODED VIEW, X-RAY & WIREFRAME CONTROLS
+     ***************************************************************************/
+    const ENV_PRESETS = {
+      daylight: {
+        label: 'Daylight Studio',
+        bg: 0x0b0f17,
+        hemiSky: 0xdbeafe,
+        hemiGround: 0x3e2723,
+        hemiInt: 0.85,
+        dirColor: 0xffffff,
+        dirInt: 1.35,
+        dirPos: [3.5, 5.2, 4.0],
+        rimColor: 0x38bdf8,
+        rimInt: 0.55,
+        chamberInt: 0.65
+      },
+      sunset: {
+        label: 'Warm Sunset',
+        bg: 0x160f18,
+        hemiSky: 0xfdba74,
+        hemiGround: 0x27171c,
+        hemiInt: 0.75,
+        dirColor: 0xfb923c,
+        dirInt: 1.55,
+        dirPos: [-4.2, 2.4, 3.2],
+        rimColor: 0xc084fc,
+        rimInt: 0.65,
+        chamberInt: 0.80
+      },
+      night: {
+        label: 'Night Glow Mode',
+        bg: 0x04070d,
+        hemiSky: 0x1e293b,
+        hemiGround: 0x090d16,
+        hemiInt: 0.35,
+        dirColor: 0x60a5fa,
+        dirInt: 0.45,
+        dirPos: [2.0, 4.5, 2.5],
+        rimColor: 0x00e5ff,
+        rimInt: 0.95,
+        chamberInt: 1.45
+      }
+    };
+
+    document.querySelectorAll('.env-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-env');
+        const cfg = ENV_PRESETS[key];
+        if (!cfg) return;
+
+        document.querySelectorAll('.env-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.getElementById('env-label').textContent = cfg.label;
+
+        scene.background.setHex(cfg.bg);
+        scene.fog.color.setHex(cfg.bg);
+        hemiLight.color.setHex(cfg.hemiSky);
+        hemiLight.groundColor.setHex(cfg.hemiGround);
+        hemiLight.intensity = cfg.hemiInt;
+
+        dirLight.color.setHex(cfg.dirColor);
+        dirLight.intensity = cfg.dirInt;
+        dirLight.position.set(...cfg.dirPos);
+
+        rimLight.color.setHex(cfg.rimColor);
+        rimLight.intensity = cfg.rimInt;
+        chamberPointLight.intensity = cfg.chamberInt;
+      });
+    });
+
+    // Exposure Slider
+    const sliderExposure = document.getElementById('slider-exposure');
+    sliderExposure.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      renderer.toneMappingExposure = val;
+      document.getElementById('exposure-val').textContent = val.toFixed(2);
+    });
+
+    // Exploded View Slider
+    const sliderExplode = document.getElementById('slider-explode');
+    let explodeFactor = 0;
+    sliderExplode.addEventListener('input', (e) => {
+      explodeFactor = parseFloat(e.target.value) / 100;
+      document.getElementById('explode-val').textContent = `${e.target.value}%`;
+
+      Object.values(subsystemGroups).forEach(grp => {
+        const vec = grp.userData.explodeVec;
+        grp.position.set(vec.x * explodeFactor, vec.y * explodeFactor, vec.z * explodeFactor);
+      });
+    });
+
+    // X-Ray Chamber Toggle
+    let xrayActive = false;
+    document.getElementById('btn-xray').addEventListener('click', (e) => {
+      xrayActive = !xrayActive;
+      e.currentTarget.classList.toggle('active', xrayActive);
+
+      materials.PBR_Precast_Concrete.transparent = xrayActive;
+      materials.PBR_Precast_Concrete.opacity = xrayActive ? 0.28 : 1.0;
+      materials.PBR_Precast_Concrete.depthWrite = !xrayActive;
+      materials.PBR_Precast_Concrete.needsUpdate = true;
+
+      materials.PBR_Underground_Soil.transparent = xrayActive;
+      materials.PBR_Underground_Soil.opacity = xrayActive ? 0.22 : 1.0;
+      materials.PBR_Underground_Soil.depthWrite = !xrayActive;
+      materials.PBR_Underground_Soil.needsUpdate = true;
+
+      showToast(xrayActive ? 'X-Ray Chamber Mode Enabled' : 'X-Ray Chamber Mode Disabled');
+    });
+
+    // Wireframe Toggle
+    let wireframeActive = false;
+    document.getElementById('btn-wireframe').addEventListener('click', (e) => {
+      wireframeActive = !wireframeActive;
+      e.currentTarget.classList.toggle('active', wireframeActive);
+
+      Object.values(materials).forEach(mat => {
+        mat.wireframe = wireframeActive;
+      });
+      if (customLoadedGLBGroup) {
+        customLoadedGLBGroup.traverse(obj => {
+          if (obj.isMesh && obj.material) {
+            obj.material.wireframe = wireframeActive;
+          }
+        });
+      }
+      showToast(wireframeActive ? 'Wireframe Topology Enabled' : 'Solid PBR Shading Restored');
+    });
+
+    // Soil & Grass Visibility Toggle
+    let soilVisible = true;
+    document.getElementById('btn-soil-toggle').addEventListener('click', (e) => {
+      soilVisible = !soilVisible;
+      e.currentTarget.classList.toggle('active', soilVisible);
+      if (subsystemGroups['soil']) {
+        subsystemGroups['soil'].visible = soilVisible;
+      }
+    });
+
+    // Auto-Orbit Toggle
+    document.getElementById('btn-autorotate').addEventListener('click', (e) => {
+      controls.autoRotate = !controls.autoRotate;
+      controls.autoRotateSpeed = 1.6;
+      e.currentTarget.classList.toggle('active', controls.autoRotate);
+    });
+
+    // Toggle Callout Pins
+    document.getElementById('btn-toggle-pins').addEventListener('click', (e) => {
+      showCalloutPins = !showCalloutPins;
+      e.currentTarget.classList.toggle('active', showCalloutPins);
+      annotationsContainer.style.display = showCalloutPins ? 'block' : 'none';
+    });
+
+    // Mobile Sidebar Toggle
+    document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
+      const sb = document.getElementById('left-sidebar');
+      sb.classList.toggle('-translate-x-[120%]');
+    });
+
+    /***************************************************************************
+     * 7. LOCAL ".GLB" FILE UPLOAD & DRAG-AND-DROP (THREE.GLTFLoader)
+     ***************************************************************************/
+    const fileInput = document.getElementById('glb-file-input');
+    const btnUploadGlb = document.getElementById('btn-upload-glb');
+    const btnRestoreProcedural = document.getElementById('btn-restore-procedural');
+    const dropOverlay = document.getElementById('drop-overlay');
+
+    btnUploadGlb.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        loadUserGLBFile(e.target.files[0]);
+      }
+    });
+
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropOverlay.classList.add('dragging');
+    });
+
+    window.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget === null) {
+        dropOverlay.classList.remove('dragging');
+      }
+    });
+
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropOverlay.classList.remove('dragging');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        loadUserGLBFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    function loadUserGLBFile(file) {
+      const reader = new FileReader();
+      showToast(`Loading ${file.name}...`);
+
+      reader.onload = function (evt) {
+        const arrayBuffer = evt.target.result;
+        const loader = new THREE.GLTFLoader();
+
+        loader.parse(
+          arrayBuffer,
+          '',
+          (gltf) => {
+            if (customLoadedGLBGroup) {
+              scene.remove(customLoadedGLBGroup);
+            }
+            customLoadedGLBGroup = gltf.scene;
+
+            let meshCount = 0;
+            customLoadedGLBGroup.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                meshCount++;
+              }
+            });
+
+            // Hide built-in procedural root and display loaded GLB
+            proceduralRoot.visible = false;
+            scene.add(customLoadedGLBGroup);
+
+            // Frame camera nicely to loaded GLB bounding box
+            const box = new THREE.Box3().setFromObject(customLoadedGLBGroup);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z) || 2;
+
+            controls.target.copy(center);
+            camera.position.set(center.x + maxDim * 0.85, center.y + maxDim * 0.55, center.z + maxDim * 0.95);
+            controls.update();
+
+            document.getElementById('model-title-label').textContent = file.name;
+            document.getElementById('source-badge').textContent = `Loaded GLB (${meshCount} Meshes)`;
+            document.getElementById('mesh-count-badge').textContent = `${meshCount} Meshes`;
+            btnRestoreProcedural.classList.remove('hidden');
+            btnRestoreProcedural.classList.add('flex');
+
+            showToast(`Successfully loaded ${file.name} (${meshCount} meshes)`);
+          },
+          (err) => {
+            console.error('GLTFLoader parse error:', err);
+            showToast('Could not parse GLB file. Verify valid glTF 2.0 binary format.');
+          }
+        );
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    btnRestoreProcedural.addEventListener('click', () => {
+      if (customLoadedGLBGroup) {
+        scene.remove(customLoadedGLBGroup);
+        customLoadedGLBGroup = null;
+      }
+      proceduralRoot.visible = true;
+      btnRestoreProcedural.classList.add('hidden');
+      btnRestoreProcedural.classList.remove('flex');
+      document.getElementById('model-title-label').textContent = 'iot for visnu.glb';
+      document.getElementById('source-badge').textContent = '13 PBR Materials Ready';
+      document.getElementById('mesh-count-badge').textContent = '7 Groups';
+      animateCameraToPreset('isometric');
+      showToast('Restored Built-In Procedural PBR Reconstruction');
+    });
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast-banner');
+      toast.textContent = msg;
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 2600);
+    }
+
+    /***************************************************************************
+     * 8. LIVE TELEMETRY & ANIMATION LOOP
+     ***************************************************************************/
+    setInterval(() => {
+      const p = (4.26 + (Math.random() * 0.06 - 0.03)).toFixed(2);
+      const t = (18.4 + (Math.random() * 0.2 - 0.1)).toFixed(1);
+      const v = (5.12 + (Math.random() * 0.06 - 0.03)).toFixed(2);
+      document.getElementById('telemetry-pressure').textContent = `${p} bar`;
+      document.getElementById('telemetry-temp').textContent = `${t} °C`;
+      document.getElementById('telemetry-solar').textContent = `${v} V`;
+    }, 1800);
+
+    function updateAnnotationPositions() {
+      if (!showCalloutPins || !proceduralRoot.visible) return;
+      const halfW = window.innerWidth / 2;
+      const halfH = window.innerHeight / 2;
+
+      annotationElements.forEach(({ el, spec }) => {
+        if (spec.id === 'soil' && !soilVisible) {
+          el.style.opacity = '0';
+          el.style.pointerEvents = 'none';
+          return;
+        }
+        const grp = subsystemGroups[spec.id];
+        const worldPos = spec.pinPos.clone();
+        if (grp) worldPos.add(grp.position);
+
+        worldPos.project(camera);
+
+        // Hide if behind camera
+        if (worldPos.z > 1) {
+          el.style.opacity = '0';
+          return;
+        }
+        const x = (worldPos.x * halfW) + halfW;
+        const y = -(worldPos.y * halfH) + halfH;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.opacity = '1';
+        el.style.pointerEvents = 'auto';
+      });
+    }
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+
+      // Smooth camera preset transition
+      if (camAnim) {
+        const elapsed = now - camAnim.startTime;
+        const t = Math.min(elapsed / camAnim.duration, 1);
+        const ease = 1 - Math.pow(1 - t, 3); // Cubic ease-out
+        camera.position.lerpVectors(camAnim.startPos, camAnim.endPos, ease);
+        controls.target.lerpVectors(camAnim.startTarget, camAnim.endTarget, ease);
+        if (t >= 1) camAnim = null;
+      }
+
+      // Animate glowing cyan-blue WaterLine Indicator Dashes
+      const timeSec = now * 0.004;
+      waterlineDashes.forEach((dash, idx) => {
+        const wave = 0.65 + 0.85 * Math.pow(Math.sin(timeSec - idx * 0.55), 2);
+        dash.material.emissiveIntensity = wave;
+      });
+
+      controls.update();
+      updateAnnotationPositions();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    window.onload = function () {
+      animate(performance.now());
+    };
+  </script>
+</body>
+</html>
